@@ -120,3 +120,23 @@ class GoodGameVODExtractor(GoodGameBaseExtractor):
             'title': timestamp,
             'url': urljoin(self._STORAGE_BASE_URL, vod_info['mp4path']),
         }
+
+
+@plugin.register('clip')
+class GoodGameClipExtractor(GoodGameBaseExtractor):
+
+    DLP_REL_URL = r'clip/(?P<id>\d+)'
+
+    _API_BASE_URL = 'https://goodgame.ru/ajax/'
+
+    def _real_extract(self, url):
+        clip_id = self._match_id(url)
+        clip_info = self._fetch(
+            f'clip/{clip_id}',
+            item_id=clip_id, description='clip info',
+        )
+        return {
+            'id': clip_id,
+            'title': clip_info.get('title', clip_id),
+            'url': clip_info['src'],
+        }
