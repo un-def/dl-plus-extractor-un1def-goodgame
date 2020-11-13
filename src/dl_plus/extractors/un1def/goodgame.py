@@ -15,14 +15,14 @@ class GoodGameBaseExtractor(Extractor):
 
     DLP_BASE_URL = r'https?://(?:www\.)?goodgame\.ru/'
 
-    _API_BASE = None
+    _API_BASE_URL = None
 
     def _fetch(self, endpoint, *, description, item_id, **query_args):
         """
         Fetch the resource using GoodGame API.
 
         The `endpoint` argument is the part of the resource path relative
-        to the `_API_BASE`.
+        to the `_API_BASE_URL`.
 
         The following keyword arguments are required by this method:
             * `item_id` -- item identifier (for logging purposes).
@@ -31,9 +31,8 @@ class GoodGameBaseExtractor(Extractor):
 
         Any additional keyword arguments are used to build URI query component.
         """
-        query_args.setdefault('fmt', 'json')
         return self._download_json(
-            urljoin(self._API_BASE, endpoint),
+            urljoin(self._API_BASE_URL, endpoint),
             item_id,
             query=query_args,
             note=f'Downloading {description} metadata',
@@ -47,7 +46,7 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
     DLP_REL_URL = (
         r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>[^&#?]+))')
 
-    _API_BASE = 'https://goodgame.ru/api/'
+    _API_BASE_URL = 'https://goodgame.ru/api/'
     _HLS_URL_TEMPLATE = 'https://hls.goodgame.ru/manifest/{src}_master.m3u8'
 
     def _real_extract(self, url):
@@ -94,4 +93,30 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
             'title': stream_info['title'],
             'is_live': True,
             'formats': formats,
+        }
+
+
+@plugin.register('vod')
+class GoodGameVODExtractor(GoodGameBaseExtractor):
+
+    DLP_REL_URL = r'vods/(?P<src>[^/]+)/(?P<timestamp>[0-9TZ:+-]+)'
+
+    _STORAGE_BASE_URL = 'https://storage2.goodgame.ru/'
+    _API_BASE_URL = _STORAGE_BASE_URL + 'api/json/'
+
+    def _real_extract(self, url):
+        src, timestamp = self.dlp_match(url).group('src', 'timestamp')
+        vods_info = self._fetch(
+            'channel/video', streamId=src,
+            item_id=src, description='vods info',
+        )
+        for vod_info in vods_info['vods']:
+            if vod_info['moddate'] == timestamp:
+                break
+        else:
+            raise ExtractorError('vod info not found')
+        return {
+            'id': f'{src}/{timestamp}',
+            'title': timestamp,
+            'url': urljoin(self._STORAGE_BASE_URL, vod_info['mp4path']),
         }
