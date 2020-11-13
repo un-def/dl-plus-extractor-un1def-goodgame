@@ -13,8 +13,9 @@ plugin = ExtractorPlugin(__name__)
 
 class GoodGameBaseExtractor(Extractor):
 
-    _API_BASE = 'https://goodgame.ru/api/'
-    _HLS_URL_TEMPLATE = 'https://hls.goodgame.ru/manifest/{src}_master.m3u8'
+    DLP_BASE_URL = r'https?://(?:www\.)?goodgame\.ru/'
+
+    _API_BASE = None
 
     def _fetch(self, endpoint, *, description, item_id, **query_args):
         """
@@ -39,23 +40,21 @@ class GoodGameBaseExtractor(Extractor):
             errnote=f'Unable to download {description} metadata',
         )
 
-    def _get_hls_url(self, src):
-        return self._HLS_URL_TEMPLATE.format(src=src)
-
 
 @plugin.register('stream')
 class GoodGameStreamExtractor(GoodGameBaseExtractor):
 
-    _VALID_URL = (
-        r'https?://(?:www\.)?goodgame\.ru/'
-        r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>\d+))'
-    )
+    DLP_REL_URL = (
+        r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>[^&#?]+))')
+
+    _API_BASE = 'https://goodgame.ru/api/'
+    _HLS_URL_TEMPLATE = 'https://hls.goodgame.ru/manifest/{src}_master.m3u8'
 
     def _real_extract(self, url):
         channel_key, src = self.dlp_match(url).group('channel_key', 'src')
         if not channel_key:
             player_info = self._fetch(
-                'player', src=src,
+                'player', src=src, fmt='json',
                 item_id=src, description='player info',
             )
             try:
@@ -63,7 +62,7 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
             except KeyError:
                 raise ExtractorError('channel_key is not found', expected=True)
         streams_info = self._fetch(
-            'getchannelstatus', id=channel_key,
+            'getchannelstatus', id=channel_key, fmt='json',
             item_id=channel_key, description='stream info',
         )
         if isinstance(streams_info, list):
@@ -86,9 +85,9 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
             except KeyError:
                 raise ExtractorError('Stream embed HTML is not found')
             src = self._search_regex(
-                r'src="[^"?]+\?([^"#?]+)"', embed, name='src')
+                r'src="[^"?]+\?([^"&#?]+)"', embed, name='src')
         formats = self._extract_m3u8_formats(
-            self._get_hls_url(src), channel_key, 'mp4')
+            self._HLS_URL_TEMPLATE.format(src=src), channel_key, 'mp4')
         self._sort_formats(formats)
         return {
             'id': str(channel_key),
