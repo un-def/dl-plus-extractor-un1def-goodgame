@@ -48,7 +48,7 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
 
     _VALID_URL = (
         r'https?://(?:www\.)?goodgame\.ru/'
-        r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>\d+))$'
+        r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>\d+))'
     )
 
     def _real_extract(self, url):
@@ -85,7 +85,8 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
                 embed = stream_info['embed']
             except KeyError:
                 raise ExtractorError('Stream embed HTML is not found')
-            src = self._search_regex(r'src="[^"?]+\?(\d+)"', embed, name='src')
+            src = self._search_regex(
+                r'src="[^"?]+\?([^"#?]+)"', embed, name='src')
         formats = self._extract_m3u8_formats(
             self._get_hls_url(src), channel_key, 'mp4')
         self._sort_formats(formats)
