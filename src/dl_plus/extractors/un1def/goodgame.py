@@ -5,7 +5,7 @@ from dl_plus.extractor import Extractor, ExtractorError, ExtractorPlugin
 urljoin = ytdl.import_from('utils', 'urljoin')
 
 
-__version__ = '0.1.0'
+__version__ = '0.1.1.dev0'
 
 
 plugin = ExtractorPlugin(__name__)
@@ -54,7 +54,10 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
     DLP_REL_URL = (
         r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>[^&#?]+))')
 
-    _HLS_URL_TEMPLATE = 'https://hls.goodgame.ru/manifest/{src}_master.m3u8'
+    _M3U8_URL_TEMPLATES = (
+        'https://hls.goodgame.ru/manifest/{src}_master.m3u8',
+        'https://hlss.goodgame.ru/hls/{src}.m3u8',
+    )
 
     def _fetch_stream_info(self, channel_key):
         streams_info = self._fetch(
@@ -93,8 +96,14 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
             raise ExtractorError(f'{channel_key} is offline', expected=True)
         if stream_status != 'Live':
             raise ExtractorError(f'Unexpected stream status: {stream_status}')
-        formats = self._extract_m3u8_formats(
-            self._HLS_URL_TEMPLATE.format(src=src), channel_key, 'mp4')
+        for m3u8_url_template in self._M3U8_URL_TEMPLATES:
+            m3u8_url = m3u8_url_template.format(src=src)
+            formats = self._extract_m3u8_formats(
+                m3u8_url, video_id=channel_key, ext='mp4', fatal=False)
+            if formats:
+                break
+        else:
+            raise ExtractorError('failed to fetch/parse m3u8')
         self._sort_formats(formats)
         return {
             'id': channel_key,
