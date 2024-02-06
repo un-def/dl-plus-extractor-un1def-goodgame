@@ -5,7 +5,7 @@ from dl_plus.extractor import Extractor, ExtractorError, ExtractorPlugin
 urljoin = ytdl.import_from('utils', 'urljoin')
 
 
-__version__ = '0.1.1'
+__version__ = '0.2.0.dev0'
 
 
 plugin = ExtractorPlugin(__name__)
@@ -50,69 +50,28 @@ class GoodGameBaseExtractor(Extractor):
 
 @plugin.register('stream')
 class GoodGameStreamExtractor(GoodGameBaseExtractor):
+    DLP_REL_URL = r'(?P<username>[^/?#]+)/?(?:[?#]|$)'
 
-    DLP_REL_URL = (
-        r'(?:channel/(?P<channel_key>[^/#?]+)/?|player/?\?(?P<src>[^&#?]+))')
-
-    _M3U8_URL_TEMPLATES = (
-        'https://hls.goodgame.ru/manifest/{src}_master.m3u8',
-        'https://hlss.goodgame.ru/hls/{src}.m3u8',
-    )
-
-    def _fetch_stream_info(self, channel_key):
-        streams_info = self._fetch(
-            'getchannelstatus', id=channel_key, fmt='json',
-            item_id=channel_key, description='stream info',
-        )
-        if isinstance(streams_info, list):
-            # API returns an empty array with 200 if the stream is not found.
-            raise ExtractorError(f'{channel_key} is not found', expected=True)
-        if not isinstance(streams_info, dict) or len(streams_info) != 1:
-            raise ExtractorError(f'Unexpected response: {streams_info!r}')
-        return next(iter(streams_info.values()))
+    _M3U8_URL_TEMPLATE = (
+        'https://hls.goodgame.ru/manifest/{stream_key}_master.m3u8')
 
     def _real_extract(self, url):
-        channel_key, src = self.dlp_match(url).group('channel_key', 'src')
-        if not src:
-            stream_info = self._fetch_stream_info(channel_key)
-            try:
-                embed = stream_info['embed']
-            except KeyError:
-                raise ExtractorError('Stream embed HTML is not found')
-            src = self._search_regex(
-                r'src="[^"?]+\?([^"&#?]+)"', embed, name='src')
-        player_info = self._fetch_player_info(src)
-        if not channel_key:
-            try:
-                channel_key = player_info['channel_key']
-            except KeyError:
-                raise ExtractorError('channel_key is not found', expected=True)
-            stream_info = self._fetch_stream_info(channel_key)
-        try:
-            stream_status = stream_info['status']
-        except KeyError:
-            raise ExtractorError('Stream status is not found')
-        if stream_status == 'Dead':
-            raise ExtractorError(f'{channel_key} is offline', expected=True)
-        if stream_status != 'Live':
-            raise ExtractorError(f'Unexpected stream status: {stream_status}')
-        for m3u8_url_template in self._M3U8_URL_TEMPLATES:
-            m3u8_url = m3u8_url_template.format(src=src)
-            formats = self._extract_m3u8_formats(
-                m3u8_url, video_id=channel_key, ext='mp4', fatal=False)
-            if formats:
-                break
-        else:
-            raise ExtractorError('failed to fetch/parse m3u8')
-        self._sort_formats(formats)
+        username = self._match_valid_url(url).group('username')
+        stream = self._fetch(
+            f'https://goodgame.ru/api/4/streams/2/username/{username}',
+            item_id=username, description='stream',
+        )
+        if not stream['online']:
+            raise ExtractorError(f'{username} is offline', expected=True)
+        m3u8_url = self._M3U8_URL_TEMPLATE.format(
+            stream_key=stream['streamKey'])
+        formats = self._extract_m3u8_formats(
+            m3u8_url, video_id=username, fatal=True)
         return {
-            'id': channel_key,
-            'title': stream_info['title'],
-            'description': stream_info.get('description'),
-            'creator': player_info.get('streamer_name'),
-            'uploader': player_info.get('streamer_name'),
-            'uploader_id': player_info.get('streamer_id'),
-            'thumbnail': stream_info.get('img'),
+            'id': username,
+            'title': stream['title'],
+            'creator': username,
+            'thumbnail': stream.get('preview'),
             'is_live': True,
             'formats': formats,
         }
