@@ -2,7 +2,7 @@ from dl_plus import ytdl
 from dl_plus.extractor import Extractor, ExtractorError, ExtractorPlugin
 
 
-urljoin = ytdl.import_from('utils', 'urljoin')
+traverse_obj, urljoin = ytdl.import_from('utils', ['traverse_obj', 'urljoin'])
 
 
 __version__ = '0.2.0.dev0'
@@ -122,23 +122,21 @@ class GoodGameVODExtractor(GoodGameBaseExtractor):
 
 @plugin.register('clip')
 class GoodGameClipExtractor(GoodGameBaseExtractor):
-
     DLP_REL_URL = r'clip/(?P<id>\d+)'
 
     def _real_extract(self, url):
         clip_id = self._match_id(url)
-        clip_info = self._fetch(
-            'https://goodgame.ru/ajax/clip/' + clip_id,
-            item_id=clip_id, description='clip info',
+        clip = self._fetch(
+            f'https://goodgame.ru/api/4/clips/2/{clip_id}',
+            item_id=clip_id, description='clip',
         )
         return {
             'id': clip_id,
-            'title': clip_info.get('title', clip_id),
-            'creator': clip_info.get('streamer'),
-            'uploader': clip_info.get('author'),
-            'thumbnail': clip_info.get('thumbnail'),
-            'view_count': clip_info.get('views'),
-            'timestamp': clip_info.get('created'),
-            'is_live': False,
-            'url': clip_info['src'],
+            'title': clip.get('title', clip_id),
+            'creator': traverse_obj(clip, ('stream', 'streamer', 'username')),
+            'uploader': traverse_obj(clip, ('author', 'username')),
+            'thumbnail': clip.get('thumbnail'),
+            'view_count': clip.get('views'),
+            'timestamp': clip.get('created'),
+            'url': clip['src'],
         }
