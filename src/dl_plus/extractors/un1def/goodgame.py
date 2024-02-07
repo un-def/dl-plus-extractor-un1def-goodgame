@@ -41,12 +41,6 @@ class GoodGameBaseExtractor(Extractor):
             errnote=f'Unable to download {description} metadata',
         )
 
-    def _fetch_player_info(self, src):
-        return self._fetch(
-            'player', src=src, fmt='json',
-            item_id=src, description='player info',
-        )
-
 
 @plugin.register('stream')
 class GoodGameStreamExtractor(GoodGameBaseExtractor):
@@ -79,45 +73,63 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
 
 @plugin.register('vod')
 class GoodGameVODExtractor(GoodGameBaseExtractor):
-
-    DLP_REL_URL = r'vods/(?P<src>[^/]+)/(?P<timestamp>[0-9TZ:+-]+)'
+    DLP_REL_URL = r'vods/(?P<stream_id>\d+)/(?P<timestamp>[0-9TZ:+-]+)'
 
     _STORAGE_BASE_URL = 'https://storage2.goodgame.ru/'
     _THUMBNAIL_KEYS = ('jpgSmall', 'jpgFull', 'png')
 
     def _real_extract(self, url):
-        src, timestamp = self.dlp_match(url).group('src', 'timestamp')
-        vods_info = self._fetch(
-            self._STORAGE_BASE_URL + 'api/json/channel/video', streamId=src,
-            item_id=src, description='vods info',
+        stream_id, timestamp = self._match_valid_url(url).group(
+            'stream_id', 'timestamp')
+        vod_surrogate_id = f'{stream_id}/{timestamp}'
+        vods = self._fetch(
+            urljoin(self._STORAGE_BASE_URL, 'api/json/channel/video'),
+            streamId=stream_id,
+            item_id=stream_id, description='vods',
         )
-        for vod_info in vods_info['vods']:
-            if vod_info['moddate'] == timestamp:
+        for vod in vods['vods']:
+            if vod['moddate'] == timestamp:
                 break
         else:
-            raise ExtractorError('vod info not found')
-        player_info = self._fetch_player_info(src)
-        previewpath = vod_info.get('previewpath', {})
+            raise ExtractorError('vod not found')
+        if m3u8_path := vod.get('m3u8path'):
+            formats = self._extract_m3u8_formats(
+                self._build_absolute_url(m3u8_path),
+                video_id=vod_surrogate_id, fatal=False,
+            )
+        else:
+            formats = None
         thumbnails = []
+        preview_path = vod.get('previewpath', {})
         for preference, key in enumerate(self._THUMBNAIL_KEYS):
-            url = previewpath.get(key)
+            url = preview_path.get(key)
             if not url:
                 continue
-            if not url.startswith('http'):
-                url = urljoin(self._STORAGE_BASE_URL, url)
-            thumbnails.append({'url': url, 'preference': preference})
-        channel_key = player_info.get('channel_key')
-        return {
-            'id': f'{channel_key or src} - {timestamp}',
+            thumbnails.append({
+                'url': self._build_absolute_url(url),
+                'preference': preference,
+            })
+        stream = self._fetch(
+            f'https://goodgame.ru/api/4/streams/2/id/{stream_id}',
+            item_id=stream_id, description='stream',
+        )
+        info_dict = {
+            'id': vod_surrogate_id,
             'title': timestamp,
-            'display_id': channel_key,
-            'creator': player_info.get('streamer_name'),
-            'uploader': player_info.get('streamer_name'),
-            'uploader_id': player_info.get('streamer_id'),
+            'creator': traverse_obj(stream, ('streamer', 'username')),
             'thumbnails': thumbnails,
             'is_live': False,
-            'url': urljoin(self._STORAGE_BASE_URL, vod_info['mp4path']),
         }
+        if formats:
+            info_dict['formats'] = formats
+        else:
+            info_dict['url'] = self._build_absolute_url(vod['mp4path'])
+        return info_dict
+
+    def _build_absolute_url(self, url):
+        if not url.startswith('http'):
+            return urljoin(self._STORAGE_BASE_URL, url)
+        return url
 
 
 @plugin.register('clip')
