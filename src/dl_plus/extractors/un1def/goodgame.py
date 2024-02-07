@@ -44,25 +44,36 @@ class GoodGameBaseExtractor(Extractor):
 
 @plugin.register('stream')
 class GoodGameStreamExtractor(GoodGameBaseExtractor):
-    DLP_REL_URL = r'(?P<username>[^/?#]+)/?(?:[?#]|$)'
+    DLP_REL_URL = (
+        r'(?:(?P<username>[^/?#]+)/?(?:#|$)|player\?(?P<stream_id>\d+))')
 
     _M3U8_URL_TEMPLATE = (
         'https://hls.goodgame.ru/manifest/{stream_key}_master.m3u8')
 
     def _real_extract(self, url):
-        username = self._match_valid_url(url).group('username')
-        stream = self._fetch(
-            f'https://goodgame.ru/api/4/streams/2/username/{username}',
-            item_id=username, description='stream',
-        )
-        if not stream['online']:
+        username, stream_id = self._match_valid_url(url).group(
+            'username', 'stream_id')
+        if username:
+            stream = self._fetch(
+                f'https://goodgame.ru/api/4/streams/2/username/{username}',
+                item_id=username, description='stream',
+            )
+            stream_id = stream.get('id')
+        else:
+            stream = self._fetch(
+                f'https://goodgame.ru/api/4/streams/2/id/{stream_id}',
+                item_id=stream_id, description='stream',
+            )
+            username = traverse_obj(stream, ('streamer', 'username'))
+        video_id = username or stream_id
+        if not stream.get('online', True):
             raise ExtractorError(f'{username} is offline', expected=True)
         m3u8_url = self._M3U8_URL_TEMPLATE.format(
             stream_key=stream['streamKey'])
         formats = self._extract_m3u8_formats(
-            m3u8_url, video_id=username, fatal=True)
+            m3u8_url, video_id=video_id, fatal=True)
         return {
-            'id': username,
+            'id': video_id,
             'title': stream['title'],
             'creator': username,
             'thumbnail': stream.get('preview'),
