@@ -12,17 +12,16 @@ plugin = ExtractorPlugin(__name__)
 
 
 class GoodGameBaseExtractor(Extractor):
-
     DLP_BASE_URL = r'https?://(?:www\.)?goodgame\.ru/'
 
-    _API_BASE_URL = 'https://goodgame.ru/api/'
+    _API_V4_BASE_URL = 'https://goodgame.ru/api/4/'
 
     def _fetch(self, endpoint, *, description, item_id, **query_args):
         """
         Fetch the resource using GoodGame API.
 
         The `endpoint` argument is either an absolute URL or an URL relative
-        to the `_API_BASE_URL`.
+        to the `_API_V4_BASE_URL`.
 
         The following keyword arguments are required by this method:
             * `item_id` -- item identifier (for logging purposes).
@@ -32,7 +31,7 @@ class GoodGameBaseExtractor(Extractor):
         Any additional keyword arguments are used to build URI query component.
         """
         if not endpoint.startswith('http'):
-            endpoint = urljoin(self._API_BASE_URL, endpoint)
+            endpoint = urljoin(self._API_V4_BASE_URL, endpoint)
         return self._download_json(
             endpoint,
             item_id,
@@ -55,13 +54,13 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
             'username', 'stream_id')
         if username:
             stream = self._fetch(
-                f'https://goodgame.ru/api/4/streams/2/username/{username}',
+                f'streams/2/username/{username}',
                 item_id=username, description='stream',
             )
             stream_id = stream.get('id')
         else:
             stream = self._fetch(
-                f'https://goodgame.ru/api/4/streams/2/id/{stream_id}',
+                f'streams/2/id/{stream_id}',
                 item_id=stream_id, description='stream',
             )
             username = traverse_obj(stream, ('streamer', 'username'))
@@ -121,7 +120,7 @@ class GoodGameVODExtractor(GoodGameBaseExtractor):
                 'preference': preference,
             })
         stream = self._fetch(
-            f'https://goodgame.ru/api/4/streams/2/id/{stream_id}',
+            f'streams/2/id/{stream_id}',
             item_id=stream_id, description='stream',
         )
         info_dict = {
@@ -150,7 +149,7 @@ class GoodGameClipExtractor(GoodGameBaseExtractor):
     def _real_extract(self, url):
         clip_id = self._match_id(url)
         clip = self._fetch(
-            f'https://goodgame.ru/api/4/clips/2/{clip_id}',
+            f'clips/2/{clip_id}',
             item_id=clip_id, description='clip',
         )
         return {
