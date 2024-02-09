@@ -2,10 +2,10 @@ from dl_plus import ytdl
 from dl_plus.extractor import Extractor, ExtractorError, ExtractorPlugin
 
 
-traverse_obj, urljoin = ytdl.import_from('utils', ['traverse_obj', 'urljoin'])
+try_get, urljoin = ytdl.import_from('utils', ['try_get', 'urljoin'])
 
 
-__version__ = '0.2.0'
+__version__ = '0.2.1.dev0'
 
 
 plugin = ExtractorPlugin(__name__)
@@ -76,7 +76,7 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
             stream_key = stream['streamKey']
         elif stream_key:
             stream = self._fetch_stream_by_stream_key(stream_key)
-            username = traverse_obj(stream, ('streamer', 'username'))
+            username = try_get(stream, lambda s: s['streamer']['username'])
         else:
             assert False, 'should not reach here'
         video_id = username or stream_key
@@ -85,6 +85,7 @@ class GoodGameStreamExtractor(GoodGameBaseExtractor):
         m3u8_url = self._M3U8_URL_TEMPLATE.format(stream_key=stream_key)
         formats = self._extract_m3u8_formats(
             m3u8_url, video_id=video_id, fatal=True)
+        self._sort_formats(formats)
         return {
             'id': video_id,
             'title': stream['title'],
@@ -121,6 +122,7 @@ class GoodGameVODExtractor(GoodGameBaseExtractor):
                 self._build_absolute_url(m3u8_path),
                 video_id=video_id, fatal=False,
             )
+            self._sort_formats(formats)
         else:
             formats = None
         thumbnails = []
@@ -137,7 +139,7 @@ class GoodGameVODExtractor(GoodGameBaseExtractor):
         info_dict = {
             'id': video_id,
             'title': timestamp,
-            'creator': traverse_obj(stream, ('streamer', 'username')),
+            'creator': try_get(stream, lambda s: s['streamer']['username']),
             'thumbnails': thumbnails,
             'is_live': False,
         }
@@ -166,8 +168,9 @@ class GoodGameClipExtractor(GoodGameBaseExtractor):
         return {
             'id': clip_id,
             'title': clip.get('title', clip_id),
-            'creator': traverse_obj(clip, ('stream', 'streamer', 'username')),
-            'uploader': traverse_obj(clip, ('author', 'username')),
+            'creator': try_get(
+                clip, lambda c: c['stream']['streamer']['username']),
+            'uploader': try_get(clip, lambda c: c['author']['username']),
             'thumbnail': clip.get('thumbnail'),
             'view_count': clip.get('views'),
             'timestamp': clip.get('created'),
