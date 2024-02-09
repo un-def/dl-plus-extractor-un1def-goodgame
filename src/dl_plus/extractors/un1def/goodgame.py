@@ -5,7 +5,7 @@ from dl_plus.extractor import Extractor, ExtractorError, ExtractorPlugin
 try_get, urljoin = ytdl.import_from('utils', ['try_get', 'urljoin'])
 
 
-__version__ = '0.2.1.dev0'
+__version__ = '0.2.1'
 
 
 plugin = ExtractorPlugin(__name__)
